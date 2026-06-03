@@ -191,9 +191,10 @@ Track milestone-level progress across all child plans. Each entry names the chil
 the milestone. This section provides an at-a-glance view of the entire initiative.
 
 - [x] EP-1 M1: Feasibility — resolve the latest-9.14 nixpkgs attribute and measure cache coverage for both GHCs. (2026-06-03 — `ghc9141`/9.14.1; rev `4df1b885…`; 9.14 HLS = 345 from-source builds)
-- [ ] EP-1 M2: Minimal multi-GHC flake — `nix develop .#ghc9124` and `.#<ghc914>` each give working ghc/cabal/HLS.
-- [ ] EP-1 M3: Consumer API — `lib.<system>.mkDevShell`, `ghcVersions`, `defaultGhc`, prebuilt `devShells`, treefmt formatter.
-- [ ] EP-1 M4: Buildable toolchain outputs for CI (`packages`/`checks`) and `nix flake check` passing.
+- [x] EP-1 M2: Minimal flake — `nix develop .#ghc9124` gives working ghc/cabal/HLS. (2026-06-03 — committed `26aa846`; `.#ghc9141` deferred to follow-up)
+- [x] EP-1 M3: Consumer API — `lib.<system>.mkDevShell`, `ghcVersions`, `defaultGhc`, prebuilt `devShells`, treefmt formatter. (2026-06-03)
+- [x] EP-1 M4: Buildable toolchain outputs for CI (`packages`/`checks`) and `nix flake check` passing. (2026-06-03)
+- [ ] EP-1 follow-up: Add `ghc9141` (9.14.1) to `supportedGhcs`; verify shell + HLS (same profiling fix; ~345 from-source builds). Deferred per user request to ship ghc9124 first.
 - [ ] EP-2 M1: Cachix cache created; auth secret wired into the repo.
 - [ ] EP-2 M2: GitHub Actions builds all GHC toolchains across target systems and pushes to Cachix.
 - [ ] EP-2 M3: `nixConfig` substituters added to the base flake; cache hit verified on a clean machine/CI.

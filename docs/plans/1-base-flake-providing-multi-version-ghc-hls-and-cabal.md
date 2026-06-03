@@ -63,12 +63,13 @@ This section must always reflect the actual current state of the work.
 - [x] M1: Confirm flakes are usable; resolve the exact nixpkgs attribute for the latest 9.14. (2026-06-03 — Determinate Nix 3.17.0 / 2.33.3, flakes enabled; latest 9.14 attr is `ghc9141` = 9.14.1)
 - [x] M1: Pin nixpkgs to a revision that contains both `haskell.packages.ghc9124` and the latest 9.14; record findings. (2026-06-03 — single unstable rev `4df1b885d76a54e1aa1a318f8d16fd6005b6401f` has ghc9124=9.12.4 and ghc9141=9.14.1)
 - [x] M1: Measure which toolchain components for each GHC are already in `cache.nixos.org` vs build-from-source. (2026-06-03 — ghc9141 HLS = 345 derivations from source; ghc9124 HLS = 4; both compilers + cabal cached)
-- [ ] M2: Write a minimal `flake.nix` exposing `devShells.<system>.ghc9124` and `.<latest-9.14>` with ghc + cabal + HLS.
-- [ ] M2: Verify `ghc`, `cabal`, and `haskell-language-server` all run inside each shell.
-- [ ] M3: Add `ghcVersions`, `defaultGhc`, and `lib.<system>.mkDevShell`; make `default` the 9.12.4 shell.
-- [ ] M3: Add a `formatter` output via treefmt-nix (nixpkgs-fmt) so `nix fmt` works.
-- [ ] M4: Expose buildable toolchain outputs (`packages.<system>.*`) and a `checks` set; `nix flake check` passes.
-- [ ] M4: Add a `nixConfig` placeholder block (substituters filled in by the Cachix plan) and a README.
+- [x] M2: Write a minimal `flake.nix` exposing `devShells.<system>.ghc9124` with ghc + cabal + HLS. (2026-06-03 — committed `26aa846`; ghc9141 deferred per Decision Log)
+- [x] M2: Verify `ghc`, `cabal`, and `haskell-language-server` all run inside each shell. (2026-06-03 — ghc 9.12.4, cabal 3.16.1.0, HLS 2.13.0.0; `runghc` end-to-end prints "hello from GHC")
+- [x] M3: Add `ghcVersions`, `defaultGhc`, and `lib.<system>.mkDevShell`; make `default` the 9.12.4 shell. (2026-06-03 — `defaultGhc`=`"ghc9124"`, `mkDevShell`+jq extensibility verified)
+- [x] M3: Add a `formatter` output via treefmt-nix (nixpkgs-fmt) so `nix fmt` works. (2026-06-03 — `nix fmt` formats Nix files; 0 changed after format)
+- [x] M4: Expose buildable toolchain outputs (`packages.<system>.*`) and a `checks` set; `nix flake check` passes. (2026-06-03 — `nix flake check` exit 0; `toolchain-ghc9124` yields `bin/{ghc,cabal,haskell-language-server}`)
+- [x] M4: Add a `nixConfig` placeholder block (substituters filled in by the Cachix plan) and a README. (2026-06-03 — `nixConfig` placeholder + `README.md` with consumer guide)
+- [ ] Follow-up: Add `ghc9141` (9.14.1) to `supportedGhcs` and verify its shell/HLS build (expect the same profiling fix; ~345 from-source derivations). Deferred per the user's request to ship ghc9124 first.
 
 
 ## Surprises & Discoveries
