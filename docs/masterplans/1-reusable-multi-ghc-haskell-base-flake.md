@@ -104,7 +104,7 @@ inside the foundation plan rather than a standalone plan.
 |---|-------|------|-----------|-----------|--------|
 | 1 | Base flake providing multi-version GHC, HLS, and cabal | docs/plans/1-base-flake-providing-multi-version-ghc-hls-and-cabal.md | None | None | In Progress |
 | 2 | Cachix binary cache and CI for the base flake toolchains | docs/plans/2-cachix-binary-cache-and-ci-for-the-base-flake-toolchains.md | EP-1 | None | Not Started |
-| 3 | Integrate the base flake into the nix-haskell-flake seihou template | docs/plans/3-integrate-the-base-flake-into-the-nix-haskell-flake-seihou-template.md | EP-1 | EP-2 | Not Started |
+| 3 | Integrate the base flake into the nix-haskell-flake seihou template | docs/plans/3-integrate-the-base-flake-into-the-nix-haskell-flake-seihou-template.md | EP-1 | EP-2 | In Progress |
 
 Status values: Not Started, In Progress, Complete, Cancelled.
 Hard Deps and Soft Deps reference other rows by their # prefix (e.g., EP-1, EP-3).

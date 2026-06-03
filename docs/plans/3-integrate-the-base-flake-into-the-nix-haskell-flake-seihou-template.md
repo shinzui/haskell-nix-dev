@@ -59,12 +59,13 @@ Use a checklist to summarize granular steps. Every stopping point must be docume
 even if it requires splitting a partially completed task into two ("done" vs. "remaining").
 This section must always reflect the actual current state of the work.
 
-- [ ] M1: Confirm the seihou template engine's list-iteration capability; choose multi-version emission strategy.
-- [ ] M1: Update `module.dhall` — keep `ghc.version` (default), add `ghc.extra-versions` (list text), bump version, update prompts/README-relevant fields; preserve the `ghc.version` export.
-- [ ] M2: Rewrite `files/flake.nix.tpl` to consume the base flake, follow its nixpkgs, and emit default + per-extra-version devShells with toggles preserved.
-- [ ] M2: Add the `nixConfig` cache block to the template (substituter/key from EP-2, or placeholder until then).
-- [ ] M3: Regenerate `files/flake.lock` so `haskell-nix-dev` is pinned; update `README.md`.
-- [ ] M3: End-to-end smoke test — `seihou run` into a scratch project, then `nix develop` both GHC shells and build the project.
+- [x] M1: Confirm the seihou template engine's list-iteration capability; choose multi-version emission strategy. (2026-06-03 — no `{{#each}}`; chose Strategy B, single optional `ghc.secondary`)
+- [x] M1: Update `module.dhall` — keep `ghc.version` (default), add `ghc.secondary` (text, Strategy B), bump to 0.10.0, constrain prompt choices; `ghc.version` export preserved. (2026-06-03 — both modules type-check)
+- [x] M2: Rewrite `files/flake.nix.tpl` to consume the base flake, follow its nixpkgs, and emit default + optional secondary devShell with toggles preserved. (2026-06-03 — render-checked, no leftover tokens)
+- [x] M2: Add the `nixConfig` cache block to the template (empty placeholder until EP-2). (2026-06-03)
+- [ ] M3: Regenerate `files/flake.lock` so `haskell-nix-dev` is pinned. **Blocked on pushing the base flake to GitHub.**
+- [ ] M3: Commit the seihou-modules changes; reinstall the module; update `README.md`.
+- [ ] M3: End-to-end smoke test — `seihou run` into a scratch project, then `nix develop` and build the project. **Needs the base flake on GitHub.**
 
 
 ## Surprises & Discoveries
@@ -72,8 +73,43 @@ This section must always reflect the actual current state of the work.
 Document unexpected behaviors, bugs, optimizations, or insights discovered during
 implementation. Provide concise evidence.
 
-(None yet. Record here: whether the template engine supports `{{#each}}`/list interpolation,
-and the exact base-flake ref you pinned.)
+**M1 — seihou template engine has no list iteration (2026-06-03).** The engine
+(`/Users/shinzui/Keikaku/bokuno/seihou-project/seihou/seihou-core/src/Seihou/Engine/Template.hs`)
+implements only `{{#if <expr>}}...{{#else}}...{{/if}}`. The block scanner recognizes solely
+`{{#if`, `{{/if}}`, `{{#else}}` — **no `{{#each}}`** and no `{{this}}`. Expression grammar
+(`.../Seihou/Core/Expr.hs`): `IsSet <var>`, `Eq <var> <val>`, `&&`, `||`, `!`, parens,
+`true`/`false`. A `list` variable interpolated as `{{var}}` renders comma-separated
+(`valueToText (VList vs) = T.intercalate "," ...`). The docs direct list-iteration use cases
+to the separate `dhall-text` step strategy. Consequence: Strategy A (`{{#each}}`) is
+infeasible; using Strategy B (single optional `ghc.secondary`). Evidence corroborated by zero
+`{{#each` matches across all `modules/**/*.tpl`.
+
+**M1 — base flake currently ships one GHC (`ghc9124`).** EP-1 deferred `ghc9141`, so the base
+flake's `supportedGhcs = [ "ghc9124" ]`. The template must not offer a `ghc.version` or
+`ghc.secondary` outside that set, or the generated `mkDevShell <attr>` fails. Handled by
+constraining the prompt to `ghc9124` and defaulting `ghc.secondary` unset until EP-1 adds
+`ghc9141`.
+
+**M2 — `seihou run` uses *installed* modules, not the source repo (2026-06-03).** Editing
+`/Users/shinzui/Keikaku/bokuno/seihou-modules/.../nix-haskell-flake` does not affect
+`seihou run`; the engine loads modules from `~/.config/seihou/installed/<name>/`, populated by
+`seihou install <git-url> --module <name>` (which **clones committed git state**). So the
+delivery loop is: edit source → commit (→ push) → `seihou install`/`upgrade`. For an
+unblocked M2 render check I temporarily synced the edited `module.dhall` + `flake.nix.tpl`
+into the installed copy, rendered, then restored it. Render results (both with no leftover
+`{{...}}` tokens):
+
+- Default (no `ghc.secondary`): generated `flake.nix` has `inputs.haskell-nix-dev.url =
+  "github:shinzui/haskell-nix-dev"`, `nixpkgs`/`flake-utils`/`treefmt-nix` `follows` lines, the
+  empty `nixConfig` block, `hsdev = haskell-nix-dev.lib.${system}`,
+  `packages.default = haskellPackages.callCabal2nix "sample" ./. {}`, and `devShells` =
+  `{ default; "ghc9124"; }`.
+- With `--var ghc.secondary=ghc9141`: `devShells` additionally contains `"ghc9141" =
+  mkProjectShell "ghc9141";` — the `{{#if IsSet ghc.secondary}}` guard works.
+
+**Base-flake ref pinned in the template:** `github:shinzui/haskell-nix-dev`. This requires the
+base flake (this repo) to be **pushed to GitHub** before the generated `flake.nix` can lock /
+evaluate and before M3's bundled `files/flake.lock` can be regenerated.
 
 
 ## Decision Log
@@ -92,6 +128,37 @@ Record every decision made while working on the plan.
   (`inputs.nixpkgs.follows = "haskell-nix-dev/nixpkgs"`) instead of declaring its own.
   Rationale: Guarantees a single shared lock and identical GHC builds, which is the whole
   point of the "same lock without expensive rebuilds" requirement.
+  Date: 2026-06-03
+
+- Decision: Use **Strategy B** (single optional `ghc.secondary` text variable, emitted via
+  `{{#if IsSet ghc.secondary}}`) rather than Strategy A (`{{#each ghc.extra-versions}}`).
+  Rationale: M1 investigation of the seihou template engine
+  (`seihou-project/seihou/seihou-core/src/Seihou/Engine/Template.hs`) confirmed it implements
+  **only** `{{#if <expr>}}...{{#else}}...{{/if}}` with the expression grammar
+  `IsSet <var>` / `Eq <var> <val>` / `&&` / `||` / `!` — there is **no `{{#each}}`/list
+  iteration** and no `{{this}}`. List variables render as comma-separated text; true iteration
+  is only available via the separate `dhall-text` step strategy. Converting the whole
+  `flake.nix.tpl` to `dhall-text` to support N versions is a large change unjustified now
+  (the base flake currently provides one GHC; see below). Strategy B supports the immediate
+  "default + one optional secondary" need with the engine's real capabilities. If >2 concurrent
+  versions are ever needed, switch the step to `dhall-text`.
+  Date: 2026-06-03
+
+- Decision: `ghc.secondary` defaults to **unset** (no second shell emitted), and the
+  `ghc.version` prompt offers only `ghc9124` for now.
+  Rationale: EP-1 currently ships only `ghc9124` in the base flake's `supportedGhcs`
+  (`ghc9141` deferred per the MasterPlan). `mkDevShell`/the prebuilt shells only accept
+  versions in `supportedGhcs`, so offering `ghc9141`/`ghc984`/`ghc966` would generate a flake
+  whose shell fails to evaluate. When EP-1 appends `ghc9141`, add it to the prompt choices and
+  set `ghc.secondary`'s default (or document setting it) to `ghc9141`.
+  Date: 2026-06-03
+
+- Decision: The generated flake's `nixConfig` uses **empty** `extra-substituters` /
+  `extra-trusted-public-keys` lists with a TODO, not a real-looking URL + placeholder key.
+  Rationale: EP-2 (Cachix) is not yet implemented, so no cache name/key exists. Advertising a
+  substituter with a wrong/placeholder trusted public key would cause signature-verification
+  failures on consumers. Empty lists are inert (only a harmless warning) and mirror the base
+  flake's own `nixConfig` placeholder. EP-2 fills both in the same change.
   Date: 2026-06-03
 
 
