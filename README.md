@@ -118,3 +118,26 @@ All outputs are namespaced per `system` (e.g. `aarch64-darwin`):
 `flake.nix` contains a `nixConfig` placeholder for a Cachix substituter and public key. Once
 populated (see `docs/plans/2-cachix-binary-cache-and-ci-for-the-base-flake-toolchains.md`),
 consumers download prebuilt toolchains — including HLS — instead of compiling from source.
+
+## Keeping consumers in lockstep
+
+Each consumer has its own `flake.lock`. They share one toolchain derivation (and therefore the
+binary cache) only while they all pin the **same** `haskell-nix-dev` revision — `nixpkgs`
+follows it, so the pin decides the GHC/cabal/HLS builds. Update one project alone and it drifts
+off the shared cache until the rest catch up.
+
+`scripts/update-haskell-toolchain.sh` bumps every consumer flake under a workspace in lockstep
+and verifies they end up on one rev. It scans for `flake.nix` files that reference this base
+flake, is **dry-run by default**, and never commits.
+
+```bash
+just check-toolchain                 # report each consumer's pinned rev (no writes)
+just update-toolchain                # bump all consumers to the latest rev, in lockstep
+just update-toolchain-rev <rev>      # pin all consumers to a specific rev
+just update-toolchain-root <dir>     # scan a different workspace root
+
+# or call the script directly:
+./scripts/update-haskell-toolchain.sh [--root DIR] [--rev REV] [--apply]
+```
+
+After an update, review and commit each repo's `flake.lock` yourself.
