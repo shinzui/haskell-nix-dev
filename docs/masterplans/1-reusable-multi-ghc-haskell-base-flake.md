@@ -104,9 +104,13 @@ inside the foundation plan rather than a standalone plan.
 |---|-------|------|-----------|-----------|--------|
 | 1 | Base flake providing multi-version GHC, HLS, and cabal | docs/plans/1-base-flake-providing-multi-version-ghc-hls-and-cabal.md | None | None | In Progress |
 | 2 | Cachix binary cache and CI for the base flake toolchains | docs/plans/2-cachix-binary-cache-and-ci-for-the-base-flake-toolchains.md | EP-1 | None | Not Started |
-| 3 | Integrate the base flake into the nix-haskell-flake seihou template | docs/plans/3-integrate-the-base-flake-into-the-nix-haskell-flake-seihou-template.md | EP-1 | EP-2 | In Progress |
+| 3 | Integrate the base flake into the nix-haskell-flake seihou template | docs/plans/3-integrate-the-base-flake-into-the-nix-haskell-flake-seihou-template.md | EP-1 | EP-2 | Complete* |
 
 Status values: Not Started, In Progress, Complete, Cancelled.
+\* EP-3 Complete for the shipped scope (default `ghc9124` shell, shared lock, verified
+end-to-end); its `ghc.secondary` second-shell path is render-tested only and goes fully live
+once EP-1's deferred `ghc9141` lands. EP-1 remains In Progress for the same reason. The Cachix
+`nixConfig` in both the base flake and the template stays an empty placeholder until EP-2.
 Hard Deps and Soft Deps reference other rows by their # prefix (e.g., EP-1, EP-3).
 EP-3 additionally has an *integration dependency* on EP-1 (shared consumer API), described
 in Integration Points below; integration dependencies are not blocking and so are not listed
@@ -198,9 +202,9 @@ the milestone. This section provides an at-a-glance view of the entire initiativ
 - [ ] EP-2 M1: Cachix cache created; auth secret wired into the repo.
 - [ ] EP-2 M2: GitHub Actions builds all GHC toolchains across target systems and pushes to Cachix.
 - [ ] EP-2 M3: `nixConfig` substituters added to the base flake; cache hit verified on a clean machine/CI.
-- [ ] EP-3 M1: `module.dhall` updated — `ghc.version` default + `ghc.extra-versions` list + base-flake input var; `ghc.version` export preserved.
-- [ ] EP-3 M2: `flake.nix.tpl` rewritten to consume the base flake and emit per-version + default devShells with toggles preserved.
-- [ ] EP-3 M3: Regenerated `flake.lock`, updated README, and an end-to-end `seihou run` smoke test producing a buildable project.
+- [x] EP-3 M1: `module.dhall` updated — `ghc.version` default + `ghc.secondary` (Strategy B; engine has no list iteration) + constrained prompt; `ghc.version` export preserved. (2026-06-03 — v0.10.0; both modules type-check)
+- [x] EP-3 M2: `flake.nix.tpl` rewritten to consume the base flake and emit default + optional secondary devShell with toggles preserved. (2026-06-03 — render-checked, no leftover tokens)
+- [x] EP-3 M3: Regenerated `flake.lock`, updated README + registry, and an end-to-end `seihou run` smoke test producing a buildable project. (2026-06-03 — pushed; `nix develop` + `nix build .#default` verified)
 
 
 ## Surprises & Discoveries
@@ -247,7 +251,26 @@ made consumable from other projects **first**; `ghc9141` is added afterward (a o
 interface — `supportedGhcs`/`defaultGhc` remain the single source of truth; the set is simply
 `[ "ghc9124" ]` until 9.14 is appended.
 
-(EP-2 will record the final Cachix cache name and public key here for EP-3 to consume.)
+**EP-3 M1–M3 — template integration delivered for ghc9124 (2026-06-03).**
+
+- **seihou engine has no list iteration** (`{{#each}}`); only `{{#if Eq/IsSet ...}}`. The
+  MasterPlan/EP-3 Integration Point that envisioned `ghc.extra-versions` as an iterated `list
+  text` is infeasible as a template; implemented **Strategy B** — a single optional
+  `ghc.secondary` text var (`{{#if IsSet ghc.secondary}}`). >2 versions would need the
+  `dhall-text` step strategy. This refines the "Canonical GHC version set" integration point:
+  the template exposes the default `ghc.version` plus one optional `ghc.secondary`, both
+  constrained to the base flake's `supportedGhcs`.
+- **`seihou run` uses installed modules**, not the source repo — delivery is commit → push →
+  `seihou install`. Recorded so EP-2/future template work expects the same loop.
+- The base flake was **pushed to `github:shinzui/haskell-nix-dev` (rev `66ea98b`)** so the
+  template's `github:` input resolves; the generated project's `flake.lock` pins it and a
+  bootstrapped project's `nix develop` reuses the base flake's exact prebuilt HLS store path.
+- **Second-shell (`ghc.secondary`) is render-tested only**, gated on EP-1 adding `ghc9141`.
+  When 9.14 lands in the base flake, both the EP-1 follow-up and the EP-3 follow-up
+  (set/verify `ghc.secondary=ghc9141`) complete together.
+
+(EP-2 will record the final Cachix cache name and public key here for EP-3 to consume; both
+the base flake's and the template's `nixConfig` remain empty placeholders until then.)
 
 
 ## Decision Log

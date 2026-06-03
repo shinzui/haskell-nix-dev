@@ -63,9 +63,10 @@ This section must always reflect the actual current state of the work.
 - [x] M1: Update `module.dhall` — keep `ghc.version` (default), add `ghc.secondary` (text, Strategy B), bump to 0.10.0, constrain prompt choices; `ghc.version` export preserved. (2026-06-03 — both modules type-check)
 - [x] M2: Rewrite `files/flake.nix.tpl` to consume the base flake, follow its nixpkgs, and emit default + optional secondary devShell with toggles preserved. (2026-06-03 — render-checked, no leftover tokens)
 - [x] M2: Add the `nixConfig` cache block to the template (empty placeholder until EP-2). (2026-06-03)
-- [ ] M3: Regenerate `files/flake.lock` so `haskell-nix-dev` is pinned. **Blocked on pushing the base flake to GitHub.**
-- [ ] M3: Commit the seihou-modules changes; reinstall the module; update `README.md`.
-- [ ] M3: End-to-end smoke test — `seihou run` into a scratch project, then `nix develop` and build the project. **Needs the base flake on GitHub.**
+- [x] M3: Regenerate `files/flake.lock` so `haskell-nix-dev` is pinned. (2026-06-03 — base flake pushed `66ea98b`; lock has `haskell-nix-dev` node, `nixpkgs`/`treefmt-nix` follow it)
+- [x] M3: Commit the seihou-modules changes; reinstall the module; update `README.md`; sync registry to 0.10.0. (2026-06-03 — seihou-modules `95d9c3e`, `e56dbb0`; installed module = 0.10.0)
+- [x] M3: End-to-end smoke test — `seihou run` into a scratch project, then `nix develop` and build the project. (2026-06-03 — default shell: GHC 9.12.4 + cabal 3.16.1.0 + HLS 2.13.0.0 [same store path as base flake]; `nix build .#default` built the sample via callCabal2nix)
+- [ ] Follow-up: once EP-1 adds `ghc9141` to the base flake, set/document `ghc.secondary=ghc9141` and verify the second shell *evaluates* (only render-tested so far, since the base flake has no ghc9141 yet). Re-lock and bump the module if needed.
 
 
 ## Surprises & Discoveries
@@ -167,7 +168,41 @@ Record every decision made while working on the plan.
 Summarize outcomes, gaps, and lessons learned at major milestones or at completion. Compare
 the result against the original purpose.
 
-(To be filled during and after implementation.)
+**Delivered (2026-06-03).** The `nix-haskell-flake` seihou module (v0.10.0, pushed to
+`github:shinzui/seihou-modules`) now generates Haskell projects that consume the
+`haskell-nix-dev` base flake. A freshly bootstrapped project:
+
+- follows the base flake's nixpkgs (`inputs.nixpkgs.follows = "haskell-nix-dev/nixpkgs"`) — a
+  single shared lock; verified the regenerated `files/flake.lock` has a `haskell-nix-dev` node
+  and `nixpkgs`/`treefmt-nix` resolve via `follows`;
+- builds its devShell from `haskell-nix-dev.lib.${system}.mkDevShell` — `nix develop` gave GHC
+  9.12.4, cabal 3.16.1.0, and HLS 2.13.0.0 at the **same store path** as the base flake (so
+  consumers reuse the prebuilt HLS, no rebuild);
+- builds its own package via `callCabal2nix` — `nix build .#default` produced
+  `…-sample-0.1.0`;
+- preserves the toggles (treefmt/pre-commit exercised; pre-commit hook installed via the
+  shellHook) and the `ghc.version` export (`haskell-library` still type-checks).
+
+**Gaps / deviations from the original plan.**
+
+- The plan's **Strategy A (`{{#each}}` over `ghc.extra-versions`) is impossible** — the seihou
+  engine has no list iteration. Implemented **Strategy B** (one optional `ghc.secondary`).
+  Supporting >2 concurrent versions would require switching the step to the `dhall-text`
+  strategy (noted for the future).
+- The second devShell is **render-tested only**, not evaluated, because EP-1 currently ships
+  only `ghc9124` (ghc9141 deferred). When the base flake adds `ghc9141`, set/document
+  `ghc.secondary=ghc9141` and verify it evaluates (Progress follow-up).
+- The `nixConfig` cache block is an **empty placeholder** pending EP-2 (Cachix); until then the
+  first `nix develop` on a clean machine builds HLS from source (the ghc9124 HLS fix builds 5
+  derivations).
+- Discovered that `seihou run` uses **installed** modules, not the source tree, so delivery
+  requires commit → push → `seihou install`. Also bumped the `seihou-registry.dhall` entry to
+  0.10.0 (other modules' pre-existing version drift left untouched).
+
+Against the original purpose: met — generated projects consume the base flake, share one lock,
+and get a working GHC+cabal+HLS shell that reuses the base flake's prebuilt toolchain. The
+multi-version dimension is structurally in place (default + optional secondary) and becomes
+fully live once EP-1's `ghc9141` lands.
 
 
 ## Context and Orientation
