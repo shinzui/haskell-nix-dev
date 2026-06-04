@@ -68,9 +68,10 @@ echo
 consumers=()
 while IFS= read -r dir; do consumers+=("$dir"); done < <(
   find "$ROOT" \
-       \( -name .git -o -name result -o -name '.direnv' -o -name node_modules \) -prune -o \
+       \( -name .git -o -name result -o -name '.direnv' -o -name node_modules -o -name dist-newstyle \) -prune -o \
        -type f -name flake.nix -print 2>/dev/null \
   | while IFS= read -r f; do grep -ql "shinzui/haskell-nix-dev" "$f" && dirname "$f"; done \
+  | grep -vE '/(blueprints|recipes|modules)/.*/files(/|$)' \
   | sort -u
 )
 
