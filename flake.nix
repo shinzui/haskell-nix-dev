@@ -1,7 +1,7 @@
 {
   description = "Reusable multi-version GHC/HLS/cabal toolchains for Haskell projects";
 
-  inputs.nixpkgs.url = "github:nixos/nixpkgs/4df1b885d76a54e1aa1a318f8d16fd6005b6401f";
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/ffa10e26ae11d676b2db836259889f1f571cb14f";
   inputs.flake-utils.url = "github:numtide/flake-utils";
   inputs.treefmt-nix.url = "github:numtide/treefmt-nix";
 
@@ -16,10 +16,9 @@
   outputs = { self, nixpkgs, flake-utils, treefmt-nix }:
     let
       # Canonical set of supported GHC attribute names. To add or drop a version,
-      # edit this list (and keep defaultGhc pointing at a member). ghc9141 (9.14.1) is
-      # intentionally deferred — see the MasterPlan Decision Log — and is added by appending
-      # "ghc9141" here.
-      supportedGhcs = [ "ghc9124" ];
+      # edit this list (and keep defaultGhc pointing at a member). ghc9124 (9.12.4) is the
+      # default; ghc9141 (9.14.1) is the secondary, exposed as `nix develop .#ghc9141`.
+      supportedGhcs = [ "ghc9124" "ghc9141" ];
       defaultGhc = "ghc9124";
     in
     flake-utils.lib.eachDefaultSystem (system:
@@ -28,27 +27,56 @@
 
         # For one GHC attribute, gather the toolchain components.
         #
-        # HLS note: GHC 9.12.4 panics compiling ghcide's *profiling* objects on
+        # HLS note 1 (profiling): GHC 9.12.4 panics compiling ghcide's *profiling* objects on
         # aarch64-darwin, and ghcide/HLS are absent from cache.nixos.org, so HLS always
         # builds from source and always panics. Profiling libraries are useless for an editor
         # backend, so we disable library profiling on ghcide and the hls-* packages (and on
-        # HLS itself). This keeps the ~337 leaf dependencies profiled+cached while rebuilding
-        # only ~5 derivations. See the ExecPlan Decision Log / Surprises & Discoveries.
+        # HLS itself). This keeps the leaf dependencies profiled+cached while rebuilding only
+        # a handful of derivations. See the ExecPlan Decision Log / Surprises & Discoveries.
+        #
+        # HLS note 2 (stale base bound): in the pinned nixpkgs the GHC 9.14.1 package set ships
+        # ghc-lib-parser 9.12.3.x, whose cabal file caps `base < 4.22` while GHC 9.14.1 provides
+        # base 4.22.0.0, so it fails to configure (Cabal-8010) and takes HLS's formatter/linter
+        # plugins (fourmolu, ormolu, stylish-haskell, hlint) and thus HLS down with it.
+        # doJailbreak strips the upper bound; the package then compiles unchanged against base
+        # 4.22 (verified). Gated on GHC >= 9.14 (where base >= 4.22) so it does not change — and
+        # thus does not un-cache — the ghc9124 toolchain, whose base is within the stated bound.
+        jailbreakNames = [
+          "algebraic-graphs"
+          "apply-refact"
+          "binary-instances"
+          "Cabal-syntax"
+          "clay"
+          "constraints-extras"
+          "dec"
+          "ghc-lib-parser"
+          "ghc-trace-events"
+          "hie-compat"
+          "hiedb"
+          "lucid"
+          "rebase"
+          "string-interpolate"
+          "tasty-hspec"
+          "tomland"
+        ];
         toolchainFor = ghc:
           let
             hl = pkgs.haskell.lib;
             hp = pkgs.haskell.packages.${ghc}.extend (hself: hsuper:
               let
-                names = builtins.filter
+                needsBoundsFixes = pkgs.lib.versionAtLeast hsuper.ghc.version "9.14";
+                profilingNames = builtins.filter
                   (n: n == "ghcide" || pkgs.lib.hasPrefix "hls-" n)
                   (builtins.attrNames hsuper);
+                profilingFixes = builtins.listToAttrs (map
+                  (n: { name = n; value = hl.disableLibraryProfiling hsuper.${n}; })
+                  profilingNames);
+                boundsFixes = builtins.listToAttrs (map
+                  (n: { name = n; value = hl.doJailbreak hsuper.${n}; })
+                  (builtins.filter (n: hsuper ? ${n})
+                    (if needsBoundsFixes then jailbreakNames else [ ])));
               in
-              builtins.listToAttrs (map
-                (n: {
-                  name = n;
-                  value = hl.disableLibraryProfiling hsuper.${n};
-                })
-                names));
+              profilingFixes // boundsFixes);
           in
           {
             inherit ghc;
