@@ -15,15 +15,19 @@ consumers."
 | GHC attribute | Version | Status |
 |---------------|---------|--------|
 | `ghc9124`     | 9.12.4  | available — the default |
-| `ghc9141`     | 9.14.1  | planned (see the MasterPlan; added by appending it to `supportedGhcs`) |
+| `ghc9141`     | 9.14.1  | available — the secondary, via `nix develop .#ghc9141` |
 
 The canonical list lives in `flake.nix` as `supportedGhcs`, with `defaultGhc = "ghc9124"`.
 Adding or removing a version is a one-line change to that list.
 
 Each toolchain provides, on `PATH`: `ghc`, `cabal`, and `haskell-language-server`. HLS is
 built with library profiling disabled on `ghcide` and the `hls-*` packages (profiling is
-useless for an editor backend and triggers a GHC 9.12.4 compiler panic when enabled); see
-`docs/plans/1-base-flake-providing-multi-version-ghc-hls-and-cabal.md` for the full rationale.
+useless for an editor backend and triggers a GHC 9.12.4 compiler panic when enabled). For
+GHC ≥ 9.14, the toolchain additionally `doJailbreak`s a set of packages whose stale `base <
+4.22` upper bounds otherwise break HLS's formatter/linter plugins against GHC 9.14.1's `base
+4.22`; this fix is gated on GHC ≥ 9.14 so it does not alter (or un-cache) the 9.12.4
+toolchain. See `docs/plans/1-base-flake-providing-multi-version-ghc-hls-and-cabal.md` for the
+full rationale.
 
 ## Using it directly in this repo
 
@@ -35,19 +39,25 @@ nix develop
 
 # Or name a specific GHC:
 nix develop .#ghc9124
+nix develop .#ghc9141   # the secondary toolchain (GHC 9.14.1)
 
-# Inside the shell:
+# Inside the default shell:
 ghc --version                     # 9.12.4
 cabal --version                   # 3.16.1.0
 haskell-language-server --version # 2.13.0.0 (GHC: 9.12.4)
 ```
+
+> Note: until the binary cache (below) is live, the first `nix develop .#ghc9141` builds the
+> 9.14 HLS closure (~345 derivations) from source, which can take a long time. The 9.12.4
+> toolchain is almost entirely served from `cache.nixos.org`.
 
 Build the whole toolchain as one cacheable package (what CI builds and pushes to the binary
 cache):
 
 ```bash
 nix build .#toolchain-ghc9124   # -> result/bin/{ghc,cabal,haskell-language-server}
-nix flake check                 # builds the toolchain check; exits 0
+nix build .#toolchain-ghc9141   # the 9.14.1 toolchain bundle
+nix flake check                 # builds the toolchain checks; exits 0
 nix fmt                         # formats Nix files via treefmt (nixpkgs-fmt)
 ```
 
@@ -85,15 +95,6 @@ If you just want the prebuilt shell with no extras, reference it directly instea
 
 ```nix
 devShells.default = haskell-nix-dev.devShells.${system}.default;   # = the ghc9124 shell
-```
-
-### Before this flake is pushed to GitHub
-
-`github:shinzui/haskell-nix-dev` resolves only once this repo is published. Until then,
-consume it by local path:
-
-```nix
-inputs.haskell-nix-dev.url = "path:/Users/shinzui/Keikaku/bokuno/haskell-nix-dev";
 ```
 
 ## Consumer API
