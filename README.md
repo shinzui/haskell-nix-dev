@@ -12,22 +12,27 @@ consumers."
 
 ## Supported toolchains
 
-| GHC attribute | Version | Status |
-|---------------|---------|--------|
-| `ghc9124`     | 9.12.4  | available — the default |
-| `ghc9141`     | 9.14.1  | available — the secondary, via `nix develop .#ghc9141` |
+| GHC attribute | Version | Tools on `PATH`        | Notes |
+|---------------|---------|------------------------|-------|
+| `ghc9124`     | 9.12.4  | `ghc`, `cabal`, `haskell-language-server` | the default |
+| `ghc9141`     | 9.14.1  | `ghc`, `cabal`         | secondary, via `nix develop .#ghc9141`; **no HLS** (see below) |
 
 The canonical list lives in `flake.nix` as `supportedGhcs`, with `defaultGhc = "ghc9124"`.
-Adding or removing a version is a one-line change to that list.
+The subset that ships HLS lives in `hlsGhcs`. Adding or removing a version, or enabling HLS
+for one, is a one-line change to those lists.
 
-Each toolchain provides, on `PATH`: `ghc`, `cabal`, and `haskell-language-server`. HLS is
-built with library profiling disabled on `ghcide` and the `hls-*` packages (profiling is
-useless for an editor backend and triggers a GHC 9.12.4 compiler panic when enabled). For
-GHC ≥ 9.14, the toolchain additionally `doJailbreak`s a set of packages whose stale `base <
-4.22` upper bounds otherwise break HLS's formatter/linter plugins against GHC 9.14.1's `base
-4.22`; this fix is gated on GHC ≥ 9.14 so it does not alter (or un-cache) the 9.12.4
-toolchain. See `docs/plans/1-base-flake-providing-multi-version-ghc-hls-and-cabal.md` for the
-full rationale.
+HLS is built with library profiling disabled on `ghcide` and the `hls-*` packages (profiling
+is useless for an editor backend and triggers a GHC 9.12.4 compiler panic when enabled).
+
+**Why `ghc9141` ships without HLS.** HLS for GHC 9.14 is not currently buildable from
+nixpkgs: its dependency closure carries many stale upper bounds (`base < 4.22`,
+`containers < 0.8`, `template-haskell < 2.24`, `time < 1.15`, `hedgehog < 1.6`) across ~19+
+packages, and at least one (`Cabal-syntax`) resists `doJailbreak` because a Hackage cabal-file
+revision re-imposes the bound. The GHC 9.14.1 *compiler* and `cabal` are fine and cached, so
+`ghc9141` is provided as a compiler+cabal toolchain — enough to build and test libraries
+against 9.14 — without HLS. Add `ghc9141` to `hlsGhcs` once nixpkgs ships a buildable 9.14
+HLS. See `docs/plans/1-base-flake-providing-multi-version-ghc-hls-and-cabal.md` for the full
+rationale.
 
 ## Using it directly in this repo
 
@@ -39,7 +44,7 @@ nix develop
 
 # Or name a specific GHC:
 nix develop .#ghc9124
-nix develop .#ghc9141   # the secondary toolchain (GHC 9.14.1)
+nix develop .#ghc9141   # the secondary toolchain (GHC 9.14.1, compiler + cabal, no HLS)
 
 # Inside the default shell:
 ghc --version                     # 9.12.4
@@ -47,16 +52,12 @@ cabal --version                   # 3.16.1.0
 haskell-language-server --version # 2.13.0.0 (GHC: 9.12.4)
 ```
 
-> Note: until the binary cache (below) is live, the first `nix develop .#ghc9141` builds the
-> 9.14 HLS closure (~345 derivations) from source, which can take a long time. The 9.12.4
-> toolchain is almost entirely served from `cache.nixos.org`.
-
 Build the whole toolchain as one cacheable package (what CI builds and pushes to the binary
 cache):
 
 ```bash
 nix build .#toolchain-ghc9124   # -> result/bin/{ghc,cabal,haskell-language-server}
-nix build .#toolchain-ghc9141   # the 9.14.1 toolchain bundle
+nix build .#toolchain-ghc9141   # the 9.14.1 bundle (ghc + cabal; no HLS)
 nix flake check                 # builds the toolchain checks; exits 0
 nix fmt                         # formats Nix files via treefmt (nixpkgs-fmt)
 ```
@@ -103,14 +104,17 @@ All outputs are namespaced per `system` (e.g. `aarch64-darwin`):
 
 - `lib.${system}.defaultGhc : String` — the default GHC attribute (`"ghc9124"`).
 - `lib.${system}.ghcVersions : AttrSet` — maps each supported GHC attribute to
-  `{ ghc; compiler; hls; cabal; }`.
-- `lib.${system}.mkDevShell { ghc ? defaultGhc, extraNativeBuildInputs ? [], withHls ? true, shellHook ? "" }`
+  `{ ghc; compiler; hls; cabal; }`. `hls` is `null` for GHCs not in `hlsGhcs` (currently
+  `ghc9141`).
+- `lib.${system}.mkDevShell { ghc ? defaultGhc, extraNativeBuildInputs ? [], withHls ? <hls shipped for ghc>, shellHook ? "" }`
   — returns a `pkgs.mkShell` with that GHC's compiler, `cabal`, optional HLS, plus the
-  caller's extra packages and shell hook.
+  caller's extra packages and shell hook. `withHls` defaults to whether that GHC ships HLS;
+  for a GHC without HLS, passing `withHls = true` is a harmless no-op (there is no buildable
+  HLS to add).
 - `devShells.${system}.<ghcName>` and `devShells.${system}.default` — prebuilt shells; the
   `default` is the `defaultGhc` shell.
 - `packages.${system}.toolchain-<ghcName>` and `packages.${system}.default` — buildable
-  toolchain bundles (compiler + cabal + HLS).
+  toolchain bundles (compiler + cabal, plus HLS for GHCs in `hlsGhcs`).
 - `checks.${system}.toolchain-<ghcName>` — same derivations, so `nix flake check` builds them.
 - `formatter.${system}` — a treefmt wrapper enabling `nix fmt`.
 
