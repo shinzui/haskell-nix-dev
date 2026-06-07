@@ -30,6 +30,12 @@ jobs:
         with:
           name: shinzui
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          # Push all new paths once at job end (synchronous) rather than streaming via the
+          # background daemon. The daemon only gets a 60s drain grace at shutdown, which on the
+          # macOS runner is too short for the last large paths (it left "9 stuck jobs" and
+          # failed the job even though the build and most pushes succeeded). useDaemon: false
+          # has no such timeout — it blocks until the push completes.
+          useDaemon: false
 
       # `nix flake check` builds the `checks` outputs — the per-GHC toolchain bundles
       # (compiler + cabal + HLS where shipped) EP-1 defined. These are the exact same

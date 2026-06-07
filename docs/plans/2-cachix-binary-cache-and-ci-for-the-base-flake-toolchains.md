@@ -84,7 +84,21 @@ auth token or mint a new write token at app.cachix.org). Repo/tooling facts: rem
 `/Users/shinzui/.nix-profile/bin/cachix`. The agent is holding the workflow commit/push until
 this secret exists so the first CI run is green.
 
-(Still to record after CI: which runners were used for each system, and the measured
+**First CI run (27103918872, 2026-06-07): builds passed, macOS push step failed on a daemon
+drain timeout.** Both runners' `nix flake check` succeeded (Linux 1h39m, macOS 2h16m). The
+macOS `ghc9124` HLS closure built and was pushed (logs show `Pushed … haskell-language-server-2.13.0.0`,
+`ghcide-2.13.0.0`, `haskell-toolchain-ghc9124`). But the streaming Cachix **daemon** only gets a
+60s drain grace at shutdown; with ~20 paths still in flight it logged `Push manager drain timed
+out` / `Failed 9 stuck jobs` and exited code 3, marking the job red even though the build and
+most pushes succeeded. Linux pushed fully (faster runner, fewer in-flight paths at drain).
+Fix: set `useDaemon: false` on `cachix-action` (verified the only push knobs in v15 are
+`skipPush`/`pathsToPush`/`pushFilter`/`cachixArgs`/`useDaemon`; no drain-timeout input exists),
+which pushes all new paths in one synchronous post-step with no drain timeout.
+
+Non-blocking: GHA warns `actions/checkout@v4` and `cachix/cachix-action@v15` run on Node 20
+(deprecated June 16 2026). Cosmetic for now; bump later.
+
+(Still to record after a green run: which runners were used for each system, and the measured
 before/after fetch-vs-build for the `ghc9124` HLS.)
 
 
@@ -122,6 +136,14 @@ Record every decision made while working on the plan.
   is where the `ghc9124` HLS (profiling-fixed, 5 from-source derivations) actually builds from
   source; the Linux toolchain is largely cached upstream. `fail-fast: false` ensures a Linux
   failure never cancels the high-value macOS job.
+  Date: 2026-06-07
+
+- Decision: Set `useDaemon: false` on `cachix-action` instead of the default streaming daemon.
+  Rationale: The default daemon streams pushes during the build but only gets a 60s drain grace
+  at shutdown; the macOS runner left ~20 paths in flight and failed the job (exit 3) on a drain
+  timeout even though the build and the high-value HLS pushes succeeded. v15 exposes no
+  drain-timeout input, so `useDaemon: false` (one synchronous push at job end, no timeout) is
+  the deterministic fix.
   Date: 2026-06-07
 
 - Decision: Author `.github/workflows/build.yml` before M1, but hold the commit/push until the
