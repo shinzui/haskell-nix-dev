@@ -52,10 +52,10 @@ This section must always reflect the actual current state of the work.
 - [x] M1: Cache exists and key recorded — **reusing the existing `shinzui` cache** (not a new `haskell-nix-dev` one): URL `https://shinzui.cachix.org`, key `shinzui.cachix.org-1:QEmAoJrA9WwLP0uxfDgktLi2BRrcvQQWdz8NzcMg4/E=`, reachable (HTTP 200). (2026-06-07)
 - [ ] M1 (remaining): Add `CACHIX_AUTH_TOKEN` push secret to `shinzui/haskell-nix-dev` GitHub repo (repo currently has zero secrets). **Operator-gated** — see Surprises & Discoveries.
 - [x] M2: Add `.github/workflows/build.yml` that builds every toolchain across systems and pushes to Cachix. (2026-06-07 — authored; matrix `macos-14` [aarch64-darwin, primary] + `ubuntu-latest`; `fail-fast: false`; not yet committed/pushed — held until M1 secret exists so the first CI run is green.)
-- [ ] M2: Confirm CI is green and that a second CI run reports cache hits (paths fetched, not built).
-- [ ] M3: Fill the base flake's `nixConfig` substituter/key placeholders with the real cache values.
-- [ ] M3: Verify on a clean store that the toolchains are fetched from Cachix, not built.
-- [ ] M3: Record the final cache name and public key in the MasterPlan's Surprises & Discoveries.
+- [x] M2: Confirm CI is green and that a second CI run reports cache hits (paths fetched, not built). (2026-06-07 — run `27107180663` green on both runners; cache-warm times **macOS 2h16m→9m28s, Linux 1h39m→1m19s** — the speedup is the fetch-vs-build proof.)
+- [x] M3: Fill the base flake's `nixConfig` substituter/key placeholders with the real cache values. (2026-06-07 — `https://shinzui.cachix.org` + key in `flake.nix`.)
+- [x] M3: Verify the toolchains are fetched from Cachix, not built. (2026-06-07 — `toolchain-ghc9124` bundle and `haskell-language-server-2.13.0.0` [`5zh48s6…`] both return HTTP 200 on `shinzui.cachix.org`; CI run 2 fetched them, cutting macOS build to 9m. Local `--dry-run` is a no-op only because this dev machine already has the paths in-store.)
+- [x] M3: Record the final cache name and public key in the MasterPlan's Surprises & Discoveries. (2026-06-07)
 
 
 ## Surprises & Discoveries
@@ -98,8 +98,27 @@ which pushes all new paths in one synchronous post-step with no drain timeout.
 Non-blocking: GHA warns `actions/checkout@v4` and `cachix/cachix-action@v15` run on Node 20
 (deprecated June 16 2026). Cosmetic for now; bump later.
 
-(Still to record after a green run: which runners were used for each system, and the measured
-before/after fetch-vs-build for the `ghc9124` HLS.)
+**Green run + cache-hit proof (run 27107180663, 2026-06-07).** Runners: `macos-14`
+(aarch64-darwin), `ubuntu-latest` (x86_64-linux). With the cache populated by the prior run,
+the `useDaemon: false` run was green on both legs and dramatically faster because the build now
+*fetches* from `shinzui` instead of compiling:
+
+| System | Run 1 (cold) | Run 2 (warm) |
+|--------|--------------|--------------|
+| aarch64-darwin (macOS) | 2h16m52s | **9m28s** |
+| x86_64-linux | 1h39m18s | **1m19s** |
+
+The dominant saving is the `ghc9124` HLS, which builds from source cold. Direct cache check:
+`curl -sI https://shinzui.cachix.org/<hash>.narinfo` returns **HTTP 200** for both
+`haskell-toolchain-ghc9124` and `haskell-language-server-2.13.0.0`
+(`/nix/store/5zh48s6rsfzlqzdhrykf6376ydp0gbcy-…`, the same path the run-1 push logged).
+
+Note on local `--dry-run`: on this dev machine `nix build .#toolchain-ghc9124 --dry-run` is a
+no-op (nothing fetched/built) because the toolchain is already in-store from prior local work;
+nixConfig also emits "ignoring untrusted flake configuration" warnings since flake `nixConfig`
+is advisory unless trusted — the user's dotfiles already trust `shinzui`, and fresh consumers
+run `cachix use shinzui` (documented in the README). The CI cold→warm drop is the authoritative
+fetch-vs-build evidence.
 
 
 ## Decision Log
@@ -159,7 +178,29 @@ Record every decision made while working on the plan.
 Summarize outcomes, gaps, and lessons learned at major milestones or at completion. Compare
 the result against the original purpose.
 
-(To be filled during and after implementation.)
+Delivered (2026-06-07). The base flake's toolchains are now built in CI and cached on Cachix,
+and the flake advertises the cache — meeting the plan's purpose (stop rebuilding HLS from
+source on every machine).
+
+- **Cache:** reused the user's existing `shinzui.cachix.org` (already trusted in
+  `dotfiles.nix`) instead of creating a new one — no account setup, key already known.
+- **CI:** `.github/workflows/build.yml` — matrix `macos-14` (aarch64-darwin, primary) +
+  `ubuntu-latest`, `fail-fast: false`, driven by `nix flake check` so it tracks `supportedGhcs`
+  with no hard-coded version list. Pushes with `cachix-action@v15`, `useDaemon: false`.
+- **Advertised:** `flake.nix` `nixConfig` carries the `shinzui` substituter + key; README has a
+  "Binary cache" section (`cachix use shinzui` / nix.conf lines).
+- **Result:** cache-warm CI dropped macOS 2h16m→9m28s and Linux 1h39m→1m19s; HLS + toolchain
+  paths confirmed present on the cache (HTTP 200).
+
+Gaps / lessons:
+- The streaming Cachix daemon's fixed 60s shutdown drain is too short for large macOS pushes
+  and fails the job after a successful build; `useDaemon: false` is the reliable choice for
+  big-closure Haskell toolchains.
+- `actions/checkout@v4` and `cachix-action@v15` run on Node 20 (GHA-deprecated 2026-06-16) —
+  non-blocking warning; bump when convenient.
+- There is no `ghc9141` HLS to cache (GHC 9.14 HLS is unbuildable in nixpkgs); when it is
+  eventually enabled in EP-1's `hlsGhcs`, CI needs no change — it builds the flake's `checks`,
+  which will then include the 9.14 HLS automatically.
 
 
 ## Context and Orientation

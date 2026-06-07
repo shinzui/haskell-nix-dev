@@ -103,7 +103,7 @@ inside the foundation plan rather than a standalone plan.
 | # | Title | Path | Hard Deps | Soft Deps | Status |
 |---|-------|------|-----------|-----------|--------|
 | 1 | Base flake providing multi-version GHC, HLS, and cabal | docs/plans/1-base-flake-providing-multi-version-ghc-hls-and-cabal.md | None | None | In Progress |
-| 2 | Cachix binary cache and CI for the base flake toolchains | docs/plans/2-cachix-binary-cache-and-ci-for-the-base-flake-toolchains.md | EP-1 | None | In Progress |
+| 2 | Cachix binary cache and CI for the base flake toolchains | docs/plans/2-cachix-binary-cache-and-ci-for-the-base-flake-toolchains.md | EP-1 | None | Complete |
 | 3 | Integrate the base flake into the nix-haskell-flake seihou template | docs/plans/3-integrate-the-base-flake-into-the-nix-haskell-flake-seihou-template.md | EP-1 | EP-2 | Complete* |
 
 Status values: Not Started, In Progress, Complete, Cancelled.
@@ -210,9 +210,9 @@ the milestone. This section provides an at-a-glance view of the entire initiativ
 - [x] EP-1 M4: Buildable toolchain outputs for CI (`packages`/`checks`) and `nix flake check` passing. (2026-06-03)
 - [x] EP-1 follow-up: Add `ghc9141` (9.14.1) to `supportedGhcs`. (2026-06-07 — committed `c541332`; shipped as **compiler+cabal, no HLS** — GHC 9.14 HLS is unbuildable in nixpkgs; `nix develop .#ghc9141` + `runghc` verified; pin kept at `4df1b885`.)
 - [ ] EP-1 follow-up (deferred): Enable HLS for `ghc9141` (add it to `hlsGhcs`, one line) once nixpkgs ships a buildable GHC 9.14 HLS. See Surprises & Discoveries.
-- [ ] EP-2 M1: Cachix cache created; auth secret wired into the repo.
-- [ ] EP-2 M2: GitHub Actions builds all GHC toolchains across target systems and pushes to Cachix.
-- [ ] EP-2 M3: `nixConfig` substituters added to the base flake; cache hit verified on a clean machine/CI.
+- [x] EP-2 M1: Cachix cache + auth secret. (2026-06-07 — reused existing `shinzui.cachix.org`; `CACHIX_AUTH_TOKEN` added to the repo.)
+- [x] EP-2 M2: GitHub Actions builds all GHC toolchains across target systems and pushes to Cachix. (2026-06-07 — `.github/workflows/build.yml`, macOS+Linux, green run `27107180663`; `useDaemon: false` after a daemon drain-timeout failure on the first run.)
+- [x] EP-2 M3: `nixConfig` substituters added to the base flake; cache hit verified. (2026-06-07 — `shinzui` substituter+key in `flake.nix`; README "Binary cache" section; cache-warm CI macOS 2h16m→9m28s, HLS path HTTP 200 on the cache.)
 - [x] EP-3 M1: `module.dhall` updated — `ghc.version` default + `ghc.secondary` (Strategy B; engine has no list iteration) + constrained prompt; `ghc.version` export preserved. (2026-06-03 — v0.10.0; both modules type-check)
 - [x] EP-3 M2: `flake.nix.tpl` rewritten to consume the base flake and emit default + optional secondary devShell with toggles preserved. (2026-06-03 — render-checked, no leftover tokens)
 - [x] EP-3 M3: Regenerated `flake.lock`, updated README + registry, and an end-to-end `seihou run` smoke test producing a buildable project. (2026-06-03 — pushed; `nix develop` + `nix build .#default` verified)
@@ -320,10 +320,13 @@ project flake's `nixConfig` (and that EP-1's own `flake.nix` advertises) are:
 - Substituter URL: `https://shinzui.cachix.org`
 - Trusted public key: `shinzui.cachix.org-1:QEmAoJrA9WwLP0uxfDgktLi2BRrcvQQWdz8NzcMg4/E=`
 
-Status: cache reachable (HTTP 200); CI workflow authored pointing at `name: shinzui`; the
-`nixConfig` blocks in both the base flake and the template are filled in EP-2 M3 once a CI run
-has populated the cache. The only operator-gated step left is adding the `CACHIX_AUTH_TOKEN`
-push secret to the `shinzui/haskell-nix-dev` GitHub repo (currently has no secrets).
+Status (2026-06-07): **EP-2 complete.** `CACHIX_AUTH_TOKEN` added to the repo; CI
+(`.github/workflows/build.yml`, `useDaemon: false`) green on macOS+Linux (run `27107180663`);
+the base flake's `flake.nix` `nixConfig` now carries the `shinzui` substituter+key. Cache
+populated and verified: `haskell-toolchain-ghc9124` and `haskell-language-server-2.13.0.0`
+return HTTP 200 on `shinzui.cachix.org`; cache-warm CI dropped macOS 2h16m→9m28s. **Remaining
+for EP-3:** the *template's* generated `nixConfig` still needs these same two strings copied in
+(the base flake side is done) — an EP-3 follow-up, not blocking anything here.
 
 
 ## Decision Log

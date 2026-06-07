@@ -120,9 +120,35 @@ All outputs are namespaced per `system` (e.g. `aarch64-darwin`):
 
 ## Binary cache
 
-`flake.nix` contains a `nixConfig` placeholder for a Cachix substituter and public key. Once
-populated (see `docs/plans/2-cachix-binary-cache-and-ci-for-the-base-flake-toolchains.md`),
-consumers download prebuilt toolchains — including HLS — instead of compiling from source.
+Toolchains are cached on **Cachix** (`shinzui.cachix.org`). CI
+(`.github/workflows/build.yml`) builds every toolchain on `aarch64-darwin` and `x86_64-linux`
+and pushes the results, so consumers **download** prebuilt binaries — notably the `ghc9124`
+HLS, which otherwise builds from source (~hours). The win is concrete: with the cache warm, the
+macOS CI build dropped from **2h16m to ~9m**.
+
+`flake.nix` advertises the cache via `nixConfig`, but Nix only honors a flake's `nixConfig`
+for users who already trust it. For a reliable pull on any machine, configure the cache once.
+The easiest way:
+
+```bash
+cachix use shinzui
+```
+
+Or add these two lines to `~/.config/nix/nix.conf` (or `/etc/nix/nix.conf`) by hand:
+
+```text
+extra-substituters = https://shinzui.cachix.org
+extra-trusted-public-keys = shinzui.cachix.org-1:QEmAoJrA9WwLP0uxfDgktLi2BRrcvQQWdz8NzcMg4/E=
+```
+
+To confirm a toolchain is fetched rather than built, dry-run a build on a machine that does not
+already have it in its store:
+
+```bash
+nix build .#toolchain-ghc9124 --dry-run
+# Expect a "these paths will be fetched" section listing HLS/ghc, and no large
+# "these derivations will be built" list.
+```
 
 ## Keeping consumers in lockstep
 

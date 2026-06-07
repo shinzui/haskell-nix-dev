@@ -5,12 +5,13 @@
   inputs.flake-utils.url = "github:numtide/flake-utils";
   inputs.treefmt-nix.url = "github:numtide/treefmt-nix";
 
-  # Filled in by docs/plans/2-cachix-binary-cache-and-ci-for-the-base-flake-toolchains.md:
-  # the Cachix substituter and its public key, so consumers pull prebuilt toolchains instead
-  # of building HLS from source.
+  # The Cachix substituter and its public key, so consumers pull prebuilt toolchains
+  # (notably the ghc9124 HLS, built from source) instead of compiling them. Populated by CI
+  # (.github/workflows/build.yml). nixConfig is only honored for users who trust this flake;
+  # see the README "Binary cache" section for the nix.conf / `cachix use shinzui` setup.
   nixConfig = {
-    extra-substituters = [ ]; # e.g. "https://<cache-name>.cachix.org"
-    extra-trusted-public-keys = [ ]; # e.g. "<cache-name>.cachix.org-1:<base64>"
+    extra-substituters = [ "https://shinzui.cachix.org" ];
+    extra-trusted-public-keys = [ "shinzui.cachix.org-1:QEmAoJrA9WwLP0uxfDgktLi2BRrcvQQWdz8NzcMg4/E=" ];
   };
 
   outputs = { self, nixpkgs, flake-utils, treefmt-nix }:
