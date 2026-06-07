@@ -103,7 +103,7 @@ inside the foundation plan rather than a standalone plan.
 | # | Title | Path | Hard Deps | Soft Deps | Status |
 |---|-------|------|-----------|-----------|--------|
 | 1 | Base flake providing multi-version GHC, HLS, and cabal | docs/plans/1-base-flake-providing-multi-version-ghc-hls-and-cabal.md | None | None | In Progress |
-| 2 | Cachix binary cache and CI for the base flake toolchains | docs/plans/2-cachix-binary-cache-and-ci-for-the-base-flake-toolchains.md | EP-1 | None | Not Started |
+| 2 | Cachix binary cache and CI for the base flake toolchains | docs/plans/2-cachix-binary-cache-and-ci-for-the-base-flake-toolchains.md | EP-1 | None | In Progress |
 | 3 | Integrate the base flake into the nix-haskell-flake seihou template | docs/plans/3-integrate-the-base-flake-into-the-nix-haskell-flake-seihou-template.md | EP-1 | EP-2 | Complete* |
 
 Status values: Not Started, In Progress, Complete, Cancelled.
@@ -310,8 +310,20 @@ null HLS. (Full evidence in EP-1's Surprises & Discoveries / Decision Log.) Cros
   pin) was committed and pushed mid-session as `1db3eca`/`97f5425`; the fix `c541332` supersedes
   it and must be pushed to restore a buildable `github:shinzui/haskell-nix-dev`.
 
-(EP-2 will record the final Cachix cache name and public key here for EP-3 to consume; both
-the base flake's and the template's `nixConfig` remain empty placeholders until then.)
+**EP-2 — Cachix cache coordinates (2026-06-07).** EP-2 reuses the user's **existing `shinzui`
+cache** rather than creating a new one (it is already wired into
+`/Users/shinzui/Keikaku/dotfiles.nix`: trusted substituter + key in `darwin/bootstrap.nix`,
+auth token via agenix in `home/cachix.nix`). The coordinates EP-3 copies into the generated
+project flake's `nixConfig` (and that EP-1's own `flake.nix` advertises) are:
+
+- Cache name: `shinzui`
+- Substituter URL: `https://shinzui.cachix.org`
+- Trusted public key: `shinzui.cachix.org-1:QEmAoJrA9WwLP0uxfDgktLi2BRrcvQQWdz8NzcMg4/E=`
+
+Status: cache reachable (HTTP 200); CI workflow authored pointing at `name: shinzui`; the
+`nixConfig` blocks in both the base flake and the template are filled in EP-2 M3 once a CI run
+has populated the cache. The only operator-gated step left is adding the `CACHIX_AUTH_TOKEN`
+push secret to the `shinzui/haskell-nix-dev` GitHub repo (currently has no secrets).
 
 
 ## Decision Log

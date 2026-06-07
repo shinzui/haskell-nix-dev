@@ -1,0 +1,41 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      # Never let one system's failure cancel the others — the macOS (aarch64-darwin)
+      # cache is the high-value target (HLS builds from source there), so it must run
+      # even if the Linux job fails.
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14      # aarch64-darwin — primary cache target (HLS from source)
+          - runner: ubuntu-latest # x86_64-linux  — cheap, what most downstream CI uses
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - uses: cachix/cachix-action@v15
+        with:
+          name: shinzui
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      # `nix flake check` builds the `checks` outputs — the per-GHC toolchain bundles
+      # (compiler + cabal + HLS where shipped) EP-1 defined. These are the exact same
+      # derivations as `packages.toolchain-<ghc>`, so this single step realizes every
+      # expensive path. cachix-action pushes newly built paths to the cache afterward.
+      # Driving the build from the flake's own outputs keeps CI in sync with the
+      # canonical `supportedGhcs` list (no hard-coded version matrix to drift).
+      - name: Build all toolchains
+        run: nix flake check --print-build-logs

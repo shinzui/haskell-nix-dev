@@ -49,8 +49,9 @@ Use a checklist to summarize granular steps. Every stopping point must be docume
 even if it requires splitting a partially completed task into two ("done" vs. "remaining").
 This section must always reflect the actual current state of the work.
 
-- [ ] M1: Create the Cachix cache; record its name and public key; store the auth/signing secret in the repo's GitHub secrets.
-- [ ] M2: Add `.github/workflows/build.yml` that builds every toolchain across systems and pushes to Cachix.
+- [x] M1: Cache exists and key recorded — **reusing the existing `shinzui` cache** (not a new `haskell-nix-dev` one): URL `https://shinzui.cachix.org`, key `shinzui.cachix.org-1:QEmAoJrA9WwLP0uxfDgktLi2BRrcvQQWdz8NzcMg4/E=`, reachable (HTTP 200). (2026-06-07)
+- [ ] M1 (remaining): Add `CACHIX_AUTH_TOKEN` push secret to `shinzui/haskell-nix-dev` GitHub repo (repo currently has zero secrets). **Operator-gated** — see Surprises & Discoveries.
+- [x] M2: Add `.github/workflows/build.yml` that builds every toolchain across systems and pushes to Cachix. (2026-06-07 — authored; matrix `macos-14` [aarch64-darwin, primary] + `ubuntu-latest`; `fail-fast: false`; not yet committed/pushed — held until M1 secret exists so the first CI run is green.)
 - [ ] M2: Confirm CI is green and that a second CI run reports cache hits (paths fetched, not built).
 - [ ] M3: Fill the base flake's `nixConfig` substituter/key placeholders with the real cache values.
 - [ ] M3: Verify on a clean store that the toolchains are fetched from Cachix, not built.
@@ -62,8 +63,29 @@ This section must always reflect the actual current state of the work.
 Document unexpected behaviors, bugs, optimizations, or insights discovered during
 implementation. Provide concise evidence.
 
-(None yet. Record the final cache name, the public key, which runners were used for each
-system, and the measured before/after fetch-vs-build for HLS here.)
+**Reusing the existing `shinzui` Cachix cache (2026-06-07).** Rather than creating a new
+`haskell-nix-dev` cache, this plan reuses the user's existing `shinzui.cachix.org`, already
+wired into `/Users/shinzui/Keikaku/dotfiles.nix`:
+
+- `darwin/bootstrap.nix` lists `https://shinzui.cachix.org` under `substituters` and
+  `shinzui.cachix.org-1:QEmAoJrA9WwLP0uxfDgktLi2BRrcvQQWdz8NzcMg4/E=` under
+  `trusted-public-keys` — so the cache is **already trusted on the user's machines** (no
+  `cachix use` needed locally; a fresh consumer machine without this config still needs the
+  flake `nixConfig` / `cachix use shinzui`).
+- `home/cachix.nix` writes `~/.config/cachix/cachix.dhall` with an `authToken` sourced from
+  agenix (`secrets/cachix_auth_token.dhall.age`) — the local CLI push credential.
+- Cache reachable: `curl -sI https://shinzui.cachix.org/nix-cache-info` → HTTP 200.
+
+**M1 remaining (operator-gated).** GitHub-hosted runners do not have the local agenix token, so
+CI still needs a repo secret. The `shinzui/haskell-nix-dev` repo currently has **zero secrets**
+(`gh secret list` empty). The operator must add `CACHIX_AUTH_TOKEN` (reuse the existing `shinzui`
+auth token or mint a new write token at app.cachix.org). Repo/tooling facts: remote
+`https://github.com/shinzui/haskell-nix-dev.git`; `gh` authed as `shinzui`; `cachix` CLI at
+`/Users/shinzui/.nix-profile/bin/cachix`. The agent is holding the workflow commit/push until
+this secret exists so the first CI run is green.
+
+(Still to record after CI: which runners were used for each system, and the measured
+before/after fetch-vs-build for the `ghc9124` HLS.)
 
 
 ## Decision Log
@@ -73,6 +95,41 @@ Record every decision made while working on the plan.
 - Decision: Use Cachix (hosted) for the binary cache, populated by GitHub Actions.
   Rationale: Inherited from the MasterPlan Decision Log (2026-06-03).
   Date: 2026-06-03
+
+- Decision: Reuse the user's existing **`shinzui`** Cachix cache rather than creating a new
+  `haskell-nix-dev` cache.
+  Rationale: The user (2026-06-07) pointed out `shinzui.cachix.org` is already configured in
+  `/Users/shinzui/Keikaku/dotfiles.nix` — listed as a trusted substituter + key in
+  `darwin/bootstrap.nix` and with its auth token managed via agenix
+  (`home/cachix.nix` → `~/.config/cachix/cachix.dhall`). Reusing it means: (a) no new account
+  setup, (b) the cache is already trusted on the user's machines (no `cachix use` needed
+  locally), and (c) the public key is already known. The workflow's `cachix-action` `name:` is
+  set to `shinzui`. Cache name `shinzui`, URL `https://shinzui.cachix.org`, public key
+  `shinzui.cachix.org-1:QEmAoJrA9WwLP0uxfDgktLi2BRrcvQQWdz8NzcMg4/E=`.
+  Date: 2026-06-07
+
+- Decision: Drop the belt-and-suspenders explicit `packages` build loop from the workflow;
+  rely on `nix flake check` alone.
+  Rationale: `checks.toolchain-<ghc>` and `packages.toolchain-<ghc>` are the *same*
+  `toolchainPackage ghc` derivation (verified in `flake.nix` lines 104–137), so building the
+  checks realizes the identical store paths. cachix-action pushes everything built during the
+  job. The loop added no coverage and only risked `nix flake show --json` evaluation overhead.
+  Date: 2026-06-07
+
+- Decision: Order the CI matrix with `macos-14` (aarch64-darwin) first and keep
+  `fail-fast: false`.
+  Rationale: Per the user (2026-06-07), the macOS cache is the important one — aarch64-darwin
+  is where the `ghc9124` HLS (profiling-fixed, 5 from-source derivations) actually builds from
+  source; the Linux toolchain is largely cached upstream. `fail-fast: false` ensures a Linux
+  failure never cancels the high-value macOS job.
+  Date: 2026-06-07
+
+- Decision: Author `.github/workflows/build.yml` before M1, but hold the commit/push until the
+  `CACHIX_AUTH_TOKEN` secret exists.
+  Rationale: M1 (Cachix account, cache, auth token, GitHub secret) requires operator access I
+  do not have. Pushing the workflow before the secret exists would make cachix-action's push
+  step fail and produce a red first CI run. Holding the push keeps the first run green.
+  Date: 2026-06-07
 
 
 ## Outcomes & Retrospective
