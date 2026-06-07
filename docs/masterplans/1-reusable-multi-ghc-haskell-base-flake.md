@@ -113,8 +113,8 @@ one-line `hlsGhcs` change. EP-1 remains In Progress only for that deferred HLS f
 shipped scope (both GHCs, consumer API, packages/checks, `nix flake check` green) is complete.
 EP-3 is Complete for the shipped scope (default `ghc9124` shell, shared lock, verified
 end-to-end); because the `ghc.secondary` shell needs no HLS, its `ghc.secondary=ghc9141` path
-can now be set/verified without waiting on 9.14 HLS. The Cachix `nixConfig` in both the base
-flake and the template stays an empty placeholder until EP-2.
+can now be set/verified without waiting on 9.14 HLS. The Cachix `nixConfig` in **both** the base
+flake and the template is now filled with the `shinzui` cache (EP-2 complete, 2026-06-07).
 Hard Deps and Soft Deps reference other rows by their # prefix (e.g., EP-1, EP-3).
 EP-3 additionally has an *integration dependency* on EP-1 (shared consumer API), described
 in Integration Points below; integration dependencies are not blocking and so are not listed
@@ -324,9 +324,11 @@ Status (2026-06-07): **EP-2 complete.** `CACHIX_AUTH_TOKEN` added to the repo; C
 (`.github/workflows/build.yml`, `useDaemon: false`) green on macOS+Linux (run `27107180663`);
 the base flake's `flake.nix` `nixConfig` now carries the `shinzui` substituter+key. Cache
 populated and verified: `haskell-toolchain-ghc9124` and `haskell-language-server-2.13.0.0`
-return HTTP 200 on `shinzui.cachix.org`; cache-warm CI dropped macOS 2h16m→9m28s. **Remaining
-for EP-3:** the *template's* generated `nixConfig` still needs these same two strings copied in
-(the base flake side is done) — an EP-3 follow-up, not blocking anything here.
+return HTTP 200 on `shinzui.cachix.org`; cache-warm CI dropped macOS 2h16m→9m28s. **EP-3
+template follow-up done (2026-06-07):** the *template's* generated `nixConfig` now advertises
+the same `shinzui` substituter + key (`seihou-modules` `aacda72`, module/registry 0.11.1,
+`seihou run` smoke-test confirms the rendered cache block); both the base flake and the
+template now advertise the cache.
 
 
 ## Decision Log

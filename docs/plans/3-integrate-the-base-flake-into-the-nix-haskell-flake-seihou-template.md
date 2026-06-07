@@ -63,6 +63,7 @@ This section must always reflect the actual current state of the work.
 - [x] M1: Update `module.dhall` — keep `ghc.version` (default), add `ghc.secondary` (text, Strategy B), bump to 0.10.0, constrain prompt choices; `ghc.version` export preserved. (2026-06-03 — both modules type-check)
 - [x] M2: Rewrite `files/flake.nix.tpl` to consume the base flake, follow its nixpkgs, and emit default + optional secondary devShell with toggles preserved. (2026-06-03 — render-checked, no leftover tokens)
 - [x] M2: Add the `nixConfig` cache block to the template (empty placeholder until EP-2). (2026-06-03)
+- [x] Follow-up (EP-2 soft dep, now resolved): fill the template's `nixConfig` with the `shinzui.cachix.org` substituter + public key EP-2 published. (2026-06-07 — `seihou-modules` `aacda72`, module+registry bumped to 0.11.1, `seihou upgrade` applied, scratch `seihou run` renders the cache block with no leftover tokens; coordinates `https://shinzui.cachix.org` / `shinzui.cachix.org-1:QEmAoJrA9WwLP0uxfDgktLi2BRrcvQQWdz8NzcMg4/E=`.)
 - [x] M3: Regenerate `files/flake.lock` so `haskell-nix-dev` is pinned. (2026-06-03 — base flake pushed `66ea98b`; lock has `haskell-nix-dev` node, `nixpkgs`/`treefmt-nix` follow it)
 - [x] M3: Commit the seihou-modules changes; reinstall the module; update `README.md`; sync registry to 0.10.0. (2026-06-03 — seihou-modules `95d9c3e`, `e56dbb0`; installed module = 0.10.0)
 - [x] M3: End-to-end smoke test — `seihou run` into a scratch project, then `nix develop` and build the project. (2026-06-03 — default shell: GHC 9.12.4 + cabal 3.16.1.0 + HLS 2.13.0.0 [same store path as base flake]; `nix build .#default` built the sample via callCabal2nix)
@@ -161,6 +162,10 @@ Record every decision made while working on the plan.
   failures on consumers. Empty lists are inert (only a harmless warning) and mirror the base
   flake's own `nixConfig` placeholder. EP-2 fills both in the same change.
   Date: 2026-06-03
+  Resolved 2026-06-07: EP-2 published the cache, so the template's `nixConfig` now lists
+  `https://shinzui.cachix.org` + key `shinzui.cachix.org-1:QEmAoJrA9WwLP0uxfDgktLi2BRrcvQQWdz8NzcMg4/E=`
+  (the existing `shinzui` cache was reused rather than a new one). Module + registry bumped to
+  0.11.1; `seihou-modules` `aacda72`.
 
 
 ## Outcomes & Retrospective
