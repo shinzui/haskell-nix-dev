@@ -107,10 +107,14 @@ inside the foundation plan rather than a standalone plan.
 | 3 | Integrate the base flake into the nix-haskell-flake seihou template | docs/plans/3-integrate-the-base-flake-into-the-nix-haskell-flake-seihou-template.md | EP-1 | EP-2 | Complete* |
 
 Status values: Not Started, In Progress, Complete, Cancelled.
-\* EP-3 Complete for the shipped scope (default `ghc9124` shell, shared lock, verified
-end-to-end); its `ghc.secondary` second-shell path is render-tested only and goes fully live
-once EP-1's deferred `ghc9141` lands. EP-1 remains In Progress for the same reason. The Cachix
-`nixConfig` in both the base flake and the template stays an empty placeholder until EP-2.
+\* EP-1's `ghc9141` landed 2026-06-07 (`c541332`) as a **compiler+cabal shell, no HLS** — GHC
+9.14 HLS is unbuildable in nixpkgs (see Surprises & Discoveries); enabling 9.14 HLS later is a
+one-line `hlsGhcs` change. EP-1 remains In Progress only for that deferred HLS follow-up; its
+shipped scope (both GHCs, consumer API, packages/checks, `nix flake check` green) is complete.
+EP-3 is Complete for the shipped scope (default `ghc9124` shell, shared lock, verified
+end-to-end); because the `ghc.secondary` shell needs no HLS, its `ghc.secondary=ghc9141` path
+can now be set/verified without waiting on 9.14 HLS. The Cachix `nixConfig` in both the base
+flake and the template stays an empty placeholder until EP-2.
 Hard Deps and Soft Deps reference other rows by their # prefix (e.g., EP-1, EP-3).
 EP-3 additionally has an *integration dependency* on EP-1 (shared consumer API), described
 in Integration Points below; integration dependencies are not blocking and so are not listed
@@ -148,13 +152,19 @@ ExecPlan 1 before either follower.
 that the generated project flake calls. The agreed shape is:
 
 - `ghcVersions` — an attribute set mapping a GHC attribute name (the nixpkgs attribute under
-  `pkgs.haskell.packages`, e.g. `"ghc9124"`) to its toolchain. EP-1 owns the canonical list;
-  it must contain at least `ghc9124` and the resolved latest-9.14 attribute.
+  `pkgs.haskell.packages`, e.g. `"ghc9124"`) to its toolchain `{ ghc; compiler; hls; cabal; }`.
+  EP-1 owns the canonical list; it must contain at least `ghc9124` and the resolved latest-9.14
+  attribute. **Refinement (2026-06-07):** `hls` is `null` for GHCs not in the new `hlsGhcs`
+  list (the subset of `supportedGhcs` that ship HLS); currently `hlsGhcs = [ "ghc9124" ]`
+  because GHC 9.14 HLS is unbuildable in nixpkgs (see Surprises & Discoveries).
 - `defaultGhc` — a string naming the default GHC attribute (`"ghc9124"`).
-- `lib.${system}.mkDevShell { ghc ? defaultGhc, extraNativeBuildInputs ? [], withHls ? true,
-  shellHook ? "" }` — returns a `pkgs.mkShell` derivation containing that GHC, `cabal`, and
-  (by default) HLS, plus any extra packages and shell hook the caller supplies. EP-3's
-  generated flake passes `extraNativeBuildInputs` (e.g. `postgresql`, `process-compose`,
+- `lib.${system}.mkDevShell { ghc ? defaultGhc, extraNativeBuildInputs ? [],
+  withHls ? <hls shipped for ghc>, shellHook ? "" }` — returns a `pkgs.mkShell` derivation
+  containing that GHC, `cabal`, and (where the GHC ships HLS) HLS, plus any extra packages and
+  shell hook the caller supplies. **Refinement (2026-06-07):** `withHls` now defaults to
+  whether the GHC is in `hlsGhcs` rather than literal `true`; a GHC without HLS (currently
+  `ghc9141`) yields a compiler+cabal shell, and `withHls = true` for it is a harmless no-op.
+  EP-3's generated flake passes `extraNativeBuildInputs` (e.g. `postgresql`, `process-compose`,
   `just`, `zlib`, `pkg-config`) and a `shellHook` (e.g. the PostgreSQL setup) into this
   function.
 - `devShells.${system}.<ghcName>` and `devShells.${system}.default` — prebuilt shells for
@@ -198,7 +208,8 @@ the milestone. This section provides an at-a-glance view of the entire initiativ
 - [x] EP-1 M2: Minimal flake — `nix develop .#ghc9124` gives working ghc/cabal/HLS. (2026-06-03 — committed `26aa846`; `.#ghc9141` deferred to follow-up)
 - [x] EP-1 M3: Consumer API — `lib.<system>.mkDevShell`, `ghcVersions`, `defaultGhc`, prebuilt `devShells`, treefmt formatter. (2026-06-03)
 - [x] EP-1 M4: Buildable toolchain outputs for CI (`packages`/`checks`) and `nix flake check` passing. (2026-06-03)
-- [ ] EP-1 follow-up: Add `ghc9141` (9.14.1) to `supportedGhcs`; verify shell + HLS (same profiling fix; ~345 from-source builds). Deferred per user request to ship ghc9124 first.
+- [x] EP-1 follow-up: Add `ghc9141` (9.14.1) to `supportedGhcs`. (2026-06-07 — committed `c541332`; shipped as **compiler+cabal, no HLS** — GHC 9.14 HLS is unbuildable in nixpkgs; `nix develop .#ghc9141` + `runghc` verified; pin kept at `4df1b885`.)
+- [ ] EP-1 follow-up (deferred): Enable HLS for `ghc9141` (add it to `hlsGhcs`, one line) once nixpkgs ships a buildable GHC 9.14 HLS. See Surprises & Discoveries.
 - [ ] EP-2 M1: Cachix cache created; auth secret wired into the repo.
 - [ ] EP-2 M2: GitHub Actions builds all GHC toolchains across target systems and pushes to Cachix.
 - [ ] EP-2 M3: `nixConfig` substituters added to the base flake; cache hit verified on a clean machine/CI.
@@ -269,6 +280,36 @@ interface — `supportedGhcs`/`defaultGhc` remain the single source of truth; th
   When 9.14 lands in the base flake, both the EP-1 follow-up and the EP-3 follow-up
   (set/verify `ghc.secondary=ghc9141`) complete together.
 
+**EP-1 follow-up — GHC 9.14 HLS is unbuildable in nixpkgs; `ghc9141` ships without HLS
+(2026-06-07).** Adding `ghc9141` surfaced that HLS for GHC 9.14 cannot be built from nixpkgs
+(at `4df1b885…` or current unstable): ≥19 packages in its dependency closure carry stale upper
+bounds (`base < 4.22`, `containers < 0.8`, `template-haskell < 2.24`, `time < 1.15`,
+`hedgehog < 1.6`), the set grows each `--keep-going` build, and `Cabal-syntax` resists
+`doJailbreak` because a Hackage cabal-file revision re-imposes the bound. The GHC 9.14.1
+*compiler* and `cabal` are fine and cached, and the user's goal is to **test libraries against
+9.14** (no HLS needed), so `ghc9141` ships as a **compiler+cabal toolchain without HLS**.
+Implementation: a new `hlsGhcs = [ "ghc9124" ]` list gates HLS; `ghcVersions.<ghc>.hls` is
+`null` for GHCs outside it; `mkDevShell.withHls` defaults per-GHC; toolchain bundles omit the
+null HLS. (Full evidence in EP-1's Surprises & Discoveries / Decision Log.) Cross-plan impact:
+
+- **EP-2 (Cachix):** there is **no `ghc9141` HLS to cache** — `packages/checks.toolchain-ghc9141`
+  is just the GHC 9.14.1 compiler + `cabal` (both already cached upstream), so the 9.14 caching
+  burden the M1 finding anticipated (~345 HLS derivations) **does not exist** for now. The
+  dominant cache value is again the `ghc9124` HLS (its 5-derivation profiling-fixed closure).
+  When 9.14 HLS is eventually enabled (added to `hlsGhcs`), EP-2's matrix needs no change — it
+  builds the flake's `checks`, which will then include the 9.14 HLS automatically.
+- **EP-3 (template):** the `ghc.secondary` shell now resolves to a **compiler+cabal** shell
+  (no HLS) when set to `ghc9141`. EP-3's generated flake calls `mkDevShell`/`devShells`, which
+  already omit HLS for `ghc9141`, so **no template change is required**; the EP-3 follow-up
+  (set/verify `ghc.secondary=ghc9141`) can proceed now rather than waiting on 9.14 HLS.
+- **Pin unchanged:** the canonical lock stays at `4df1b885…` (a trial bump to `ffa10e26…` was
+  reverted — it was based on a misread `--dry-run` count and gave no benefit once 9.14 HLS was
+  abandoned), so consumers' shared lock and the already-shipped `ghc9124` toolchain are
+  untouched.
+- **Public-repo note:** an intermediate, non-building state (incomplete jailbreak, `ffa10e26`
+  pin) was committed and pushed mid-session as `1db3eca`/`97f5425`; the fix `c541332` supersedes
+  it and must be pushed to restore a buildable `github:shinzui/haskell-nix-dev`.
+
 (EP-2 will record the final Cachix cache name and public key here for EP-3 to consume; both
 the base flake's and the template's `nixConfig` remain empty placeholders until then.)
 
@@ -319,6 +360,19 @@ the base flake's and the template's `nixConfig` remain empty placeholders until 
   derivations for its HLS). The `supportedGhcs` list makes appending 9.14 a one-line change,
   so this changes only ordering, not the architecture or any integration interface.
   Date: 2026-06-03
+
+- Decision: Ship `ghc9141` as a compiler+cabal toolchain **without HLS** (gated by a new
+  `hlsGhcs` list), and keep the nixpkgs pin at `4df1b885…`.
+  Rationale: GHC 9.14 HLS is unbuildable from nixpkgs — its closure has stale version bounds
+  across ≥19 packages and `Cabal-syntax` resists `doJailbreak` (a Hackage cabal-file revision
+  re-imposes the bound). The user (2026-06-07) wants to test libraries against 9.14, which needs
+  only the (cached) compiler + `cabal`. This delivers that value now and makes re-enabling HLS a
+  one-line `hlsGhcs` change later. A trial pin bump to `ffa10e26…` was reverted (it was based on
+  a misread `--dry-run` count and had no benefit once 9.14 HLS was dropped). Refines the
+  consumer API (`ghcVersions.<ghc>.hls` may be `null`; `mkDevShell.withHls` defaults per-GHC)
+  and confirms EP-2 has no 9.14 HLS to cache and EP-3 needs no template change. See EP-1 and
+  MasterPlan Surprises & Discoveries.
+  Date: 2026-06-07
 
 - Decision: The base flake builds HLS with library profiling disabled on the `ghcide`+`hls-*`
   upper tree (see EP-1 Decision Log and Surprises & Discoveries).
